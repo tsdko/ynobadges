@@ -38,7 +38,37 @@ const isKnownCondition = conditions.has.bind(conditions);
 
 const TConditions = pipe(array(string()), checkItems(isKnownCondition, 'unknown condition'));
 
-const TBadge = partial(object({
+function reqFieldForType(reqType: string): string | undefined {
+  switch (reqType) {
+    case 'tag':
+      return 'reqString';
+    case 'tags':
+      return 'reqStrings';
+    case 'tagArrays':
+      return 'reqStringArrays';
+    case 'exp':
+    case 'expCount':
+    case 'expCompletion':
+    case 'vmCount':
+    case 'badgeCount':
+    case 'locationCompletion':
+    case 'timeTrial':
+      return 'reqInt';
+  }
+};
+
+const hasBadgeReqField = check(
+  (badge) => {
+    if (!badge.reqType) {
+      return true;
+    }
+    const reqField = reqFieldForType(badge.reqType);
+    return !reqField || badge[reqField];
+  },
+  (issue) => `missing ${reqFieldForType(issue.input.reqType)} for reqType ${issue.input.reqType}`,
+);
+
+const TBadge = pipe(partial(object({
   group: string(),
   order: number(),
   mapOrder: number(),
@@ -62,7 +92,9 @@ const TBadge = partial(object({
   animated: boolean(),
   batch: number(),
   dev: boolean(),
-}));
+})),
+  hasBadgeReqField,
+);
 
 let hadError = false;
 function emit(type: 'error' | 'warning' | 'notice', message: string, file?: string, line?: number) {
