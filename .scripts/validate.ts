@@ -2,6 +2,17 @@
 
 import { object, string, boolean, number, parse, picklist, array, partial, pipe, check, checkItems, type InferInput } from "https://esm.sh/valibot@1.1.0";
 
+const nonMapBadges = new Set([
+  'sleeping_audiophile',
+  'wanderer_audiophile',
+  'dream_wanderer',
+  'fantasy_dream',
+  'dreaming_doll',
+  'rotten_truth',
+  'ticket',
+  'pacifist',
+]);
+
 const Ops = picklist(['=', '<', '>', '<=', '>=', '!=', '>=<']);
 const badgeIdMaxLength = 32;
 const conditionIdMaxLength = 32;
@@ -33,7 +44,7 @@ const TCondition = partial(object({
   disabled: boolean(),
 }));
 
-const conditions = new Set<string>;
+const conditions = new Map<string, TCondition | undefined>;
 const isKnownCondition = conditions.has.bind(conditions);
 
 const TConditions = pipe(array(string()), checkItems(isKnownCondition, 'unknown condition'));
@@ -96,6 +107,39 @@ function emit(type: 'error' | 'warning' | 'notice', message: string, file?: stri
   if (type === 'error') hadError = true;
 }
 
+function validateMissingBadgeMap(badge) {
+  if (badge.map || nonMapBadges.has(badge.__name)) {
+    return;
+  }
+
+  const reqField = reqFieldForType(badge.reqType);
+  if (!reqField || !badge[reqField]) {
+    return;
+  }
+
+  const badgeConditions = (() => {
+    switch (reqField) {
+      case 'reqString':
+        return [badge[reqField]];
+      case 'reqStrings':
+        return badge[reqField];
+      case 'reqStringArrays':
+        return badge[reqField].flat();
+    }
+  })();
+  const maps = badgeConditions?.map(c => conditions.get(c).map)?.filter(map => !!map);
+  if (!maps || maps.length <= 0) {
+    return;
+  }
+  const map = maps[0];
+  for (const m of maps.slice(1)) {
+    if (m !== map) {
+      return;
+    }
+  }
+  emit('error', `missing map (inferred ${map})`, badge.__file);
+}
+
 if (import.meta.main) (async function() {
   const root = new URL('..', import.meta.url).pathname;
   const join = (...parts: string[]) => parts.join('/');
@@ -114,14 +158,15 @@ if (import.meta.main) (async function() {
       if (name.length > conditionIdMaxLength) {
         emit('error', `conditionId ${name} is longer than ${conditionIdMaxLength} chars`);
       }
+      let condition;
       try {
         const data = JSON.parse(await Deno.readTextFile(join(gameDir, fileEntry.name)));
-        parse(TCondition, data);
+        condition = parse(TCondition, data);
       } catch (e) {
         emit('error', e.message || e, join('conditions', game, fileEntry.name));
       }
       // Always add the condition name, even if parse fails
-      conditions.add(name);
+      conditions.set(name, condition);
     }
   }));
 
@@ -164,6 +209,8 @@ if (import.meta.main) (async function() {
         emit('error', `missing ${reqField} for reqType ${badge.reqType}`, badge.__file);
       }
     }
+
+    validateMissingBadgeMap(badge);
   }
 
   // 4. Check for unused badge images and validate image-related badge fields
