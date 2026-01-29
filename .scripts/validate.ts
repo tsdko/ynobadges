@@ -1,6 +1,6 @@
 #!/usr/bin/env -S deno run --allow-read
 
-import { object, string, boolean, number, parse, picklist, array, partial, pipe, check, checkItems, type InferInput } from "https://esm.sh/valibot@1.1.0";
+import { object, looseObject, string, boolean, number, parse, picklist, array, partial, pipe, check, checkItems, optional, type InferInput } from "https://esm.sh/valibot@1.1.0";
 
 const Ops = picklist(['=', '<', '>', '<=', '>=', '!=', '>=<']);
 const badgeIdMaxLength = 32;
@@ -82,6 +82,14 @@ function reqFieldForType(reqType: string): string | undefined {
       return 'reqInt';
   }
 };
+
+const TLang = object({
+  name: string(),
+  description: optional(string()),
+  condition: optional(string()),
+  checkbox: optional(looseObject({})),
+});
+
 
 let hadError = false;
 function emit(type: 'error' | 'warning' | 'notice', message: string, file?: string, line?: number) {
@@ -184,6 +192,52 @@ if (import.meta.main) (async function() {
       emit('error', `animated not set but animated image ${fileEntry.name} exists`, badge.__file);
     }
   }
+
+  // 5. Load and validate all badge lang files
+  const langDir = join(root, 'lang');
+  const langFiles: string[] = [];
+  for await (const langEntry of Deno.readDir(langDir)) {
+    if (!langEntry.isFile || !langEntry.name.endsWith('.json')) continue;
+    langFiles.push(langEntry.name as string);
+  }
+  await Promise.all(langFiles.map(async (fileName) => {
+    const __file = join('lang', fileName);
+    const langRoot = await (async () => {
+      try {
+        return JSON.parse(await Deno.readTextFile(__file));
+      } catch (e) {
+        emit('error', e.message || e, __file);
+      }
+    })();
+    if (!langRoot) return;
+
+    for (const [game, gameBadgeLangs] of Object.entries(langRoot)) {
+      if (!badgeGames.includes(game)) {
+        emit('error', `${game} does not have any badges`, __file);
+        continue;
+      }
+      for (const [badgeName, langData] of Object.entries(gameBadgeLangs)) {
+        if (!badges.has(badgeName)) {
+          emit('error', `badge ${badgeName} not found`, __file);
+          continue;
+        }
+
+        try {
+          const lang = parse(TLang, langData);
+          for (const [checkboxes, descPart] of Object.entries(lang.checkbox ?? {})) {
+            checkboxes.split('|')
+              .filter(c => !conditions.has(c))
+              .forEach(c => emit('error', `${badgeName}: no condition for checkbox ${c}`, __file));
+            if (lang.condition && !lang.condition.includes(descPart)) {
+              emit('error', `${badgeName}: checkbox description ${descPart} not present in badge condition`, __file);
+            }
+          }
+        } catch (e) {
+          emit('error', `${badgeName}: ${e.message || e}`, __file);
+        }
+      }
+    }
+  }));
   if (hadError) {
     Deno.exit(1);
   }
