@@ -157,6 +157,8 @@ if (import.meta.main) (async function() {
       emit('error', `parent '${badge.parent}' does not exist`, badge.__file);
     }
 
+    if (!badge.art) emit('error', 'missing artist', badge.__file);
+
     // 3.2. Validate presence of reqType-dependent req value fields
     if (badge.reqType) {
       const reqField = reqFieldForType(badge.reqType);
