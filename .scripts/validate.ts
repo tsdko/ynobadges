@@ -87,6 +87,9 @@ const TLang = object({
   name: string(),
   description: optional(string()),
   condition: optional(string()),
+  // TODO: what does "We exclude specific keys for security reasons" mean?
+  // https://github.com/open-circle/valibot/blob/bb9f6934b78a5c049decf6ec4c4d71394c356dac/library/src/schemas/looseObject/looseObject.ts#L205
+  // https://valibot.dev/api/looseObject/
   checkbox: optional(looseObject({})),
 });
 
