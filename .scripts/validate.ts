@@ -214,6 +214,7 @@ if (import.meta.main) (async function() {
     })();
     if (!langRoot) return;
 
+    const unseenBadgeNames = new Set(Object.keys(badges));
     for (const [game, gameBadgeLangs] of Object.entries(langRoot)) {
       if (!badgeGames.includes(game)) {
         emit('error', `${game} does not have any badges`, __file);
@@ -221,9 +222,10 @@ if (import.meta.main) (async function() {
       }
       for (const [badgeName, langData] of Object.entries(gameBadgeLangs)) {
         if (!badges.has(badgeName)) {
-          emit('error', `badge ${badgeName} not found`, __file);
+          emit('error', `missing badge ${badgeName}`, __file);
           continue;
         }
+        unseenBadgeNames.delete(badgeName);
 
         try {
           const lang = parse(TLang, langData);
@@ -238,6 +240,8 @@ if (import.meta.main) (async function() {
         } catch (e) {
           emit('error', `${badgeName}: ${e.message || e}`, __file);
         }
+
+        unseenBadgeNames.forEach(b => emit('error', `no lang entry for badge ${b}`, __file));
       }
     }
   }));
