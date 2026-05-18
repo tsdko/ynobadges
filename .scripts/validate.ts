@@ -152,6 +152,7 @@ if (import.meta.main) (async function() {
   for await (const gameEntry of Deno.readDir(conditionsDir)) {
     if (gameEntry.isDirectory) conditionGames.push(gameEntry.name as string);
   }
+  const gameConditionNames = new Map<string, Map<string, Set<string>>>();
   await Promise.all(conditionGames.map(async (game) => {
     const gameDir = join(conditionsDir, game);
     for await (const fileEntry of Deno.readDir(gameDir)) {
@@ -163,6 +164,10 @@ if (import.meta.main) (async function() {
       try {
         const data = JSON.parse(await Deno.readTextFile(join(gameDir, fileEntry.name)));
         parse(TCondition, data);
+        gameConditionNames
+          .getOrInsertComputed(game, () => new Map<string, Set<string>>())
+          .getOrInsertComputed(JSON.stringify(data), () => new Set<string>())
+          .add(name);
 
         const hasBoundsCheck = "mapX1" in data || "mapX2" in data || "mapY1" in data || "mapY2" in data;
         if (hasBoundsCheck) {
@@ -178,6 +183,13 @@ if (import.meta.main) (async function() {
       conditions.add(name);
     }
   }));
+
+  // 2.1. Report duplicate conditions
+  for (const [game, condNames] of gameConditionNames.entries()) {
+    for (const [cond, names] of condNames.entries().filter(([_, v]) => v.size > 1)) {
+      emit("error", `duplicate conditions: ${[...names].join(', ')}`);
+    }
+  }
 
   // 2. Load and validate all badges
   const badgesDir = join(root, 'badges');
